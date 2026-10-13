@@ -1,141 +1,101 @@
-# SKT ALEPH Day 1 Docker 통합 미니프로젝트
+# SKT ALEPH 5과목 Day2 미션
 
-시작 소스: zeroskill2400/mini-watch의 day06-start 브랜치. 작업 폴더는 C:\work\mini-watch-day06이다.
-C:\work\m5d1-sample의 기존 문장 조회 샘플과 컨테이너·데이터는 수정하지 않았다.
-기존 로그인·CSRF·게시글·감시 이벤트·메모 CRUD를 사용하고 day1-materials/project-starter를 적용했다.
-시작본 README는 docs/README-start.md에 보존했다. 이미 적용된 제출물에 시작 자료를 다시 복사하지 않는다.
+기존 mini-watch의 로그인·게시글·감시 메모·이벤트 기록을 유지하면서 세 앱의 Docker 배포, PostgreSQL SSL 연결, Next 서버 프록시와 Sentry 설정을 적용했다. **코드 구현과 로컬 검증 완료. Render 미배포, 실제 Supabase 연결·Sentry 원격 수신 미검증.** 사용자가 검토한 뒤 직접 push하며 ZIP은 만들지 않았다.
 
-Docker 구현 및 실제 실행 증거 커밋: `4cc50d1d6c1d1b70d7c9e27b9264efaa36f6cf26`
-브랜치: `codex/day1-docker-integration`. GitHub push는 사용자 확인 전 수행하지 않았다.
-전체 제출본의 최종 커밋은 `git rev-parse HEAD`로 확인한다. ZIP에도 위 구현 커밋과 검증 결과가 포함된다.
+설정과 후속 작업: [deployment-plan.md](deployment-plan.md). 검증 결과와 재현 명령: [docs/day2-verification.md](docs/day2-verification.md).
 
-## 최초 실행 (Windows PowerShell)
+## 시작본과 Git
 
-Docker Desktop이 Linux 컨테이너 모드로 실행되어 있어야 한다. 8081·8082 포트가 비어 있어야 한다.
-공유망이 이미 있으면 재사용한다. Compose는 각 파일을 별도로 실행한다.
+- 원본: `C:\work\mini-watch-day06`, `codex/day1-docker-integration`, 커밋 `96c6e6ea40cb8a91ad44b3e66acd39382ac34b37`.
+- 작업 사본: `C:\Users\User\Documents\ChatGPT\수업\mini-watch-day2`, 브랜치 `day2-deploy`. 기존 Git 이력을 복제했으며 새 앱을 만들지 않았다. 원본 파일·DB·미추적 `$null`은 변경하지 않았다.
+- 지원 자료: `zeroskill2400/mini-watch`의 `day07-cloud-materials`, 커밋 `af45ae9679bb0f5b4f3d6239d9d6348fc3cea50e`, `day2-materials/project-support/starter/`.
+- 구현·오류 수정 커밋: `f979ca776267037ad81ae1781f7d55f6e315999d`. 문서 커밋은 그 후속 커밋이다. 최종 제출 커밋은 `git rev-parse HEAD`로 확인한다.
 
-```powershell
-cd C:\work\mini-watch-day06
-docker network inspect m5d1-events *> $null
-if ($LASTEXITCODE -ne 0) { docker network create m5d1-events }
-docker compose -f compose-general.yaml config --quiet
-docker compose -f compose-monitor.yaml config --quiet
-docker compose -f compose-monitor.yaml up -d --build --wait
-(Invoke-WebRequest http://localhost:8082/api/auth/me).StatusCode
-# 위 응답이 200인 것을 확인한 뒤 일반을 실행한다.
-docker compose -f compose-general.yaml up -d --build --wait
-docker compose -f compose-monitor.yaml exec -T monitor-api python create_user.py
-docker compose -f compose-general.yaml exec -T general-api python create_user.py
-```
+기존 README는 [docs/README-day1.md](docs/README-day1.md)에 보존했다. 기존 `verification/`은 Day1 과거 기록이다. 지원 자료는 비교용이며 실제 배포 앱은 루트의 `general/`와 `monitor/`다. 지원 폴더의 일반 앱에는 의도적인 나눗셈 오류가 남아 있어 실제 앱에 다시 덮어쓰면 안 된다. 지원 일반 배포 SQL의 끝 빈 줄만 공백 검사에 맞춰 정리했다.
 
-계정 생성은 기존 username과 비밀번호를 덮어쓰지 않는다. 기존 계정은 기존 비밀번호를 사용한다.
-새 DB의 수업 계정은 일반 `student / Learn123!`, 감시 `operator / Learn123!`이다.
-일반 화면·API는 http://localhost:8081, 감시 화면·API는 http://localhost:8082이다.
-Compose의 DB 비밀번호와 세션 키는 공개 로컬 수업용 예시이며 실제 운영 비밀값이 아니다.
-.env 없이 실행되므로 별도 .env 복사가 필요 없다. 실서비스 배포용 구성이 아니다.
+## 앱과 요청 흐름
 
-## 화면 검증 절차
-
-1. 감시 API 준비(위 200 응답)를 확인한다. 일반 화면에서 로그인 링크를 열고 student에 틀린 비밀번호를 입력한다.
-2. 오류 문구를 확인한 뒤 Learn123!로 로그인한다. 게시글 목록에 student 로그인 문구와 Docker 실행 확인 게시글이 보인다.
-3. 감시 화면에서 operator로 로그인하고 기록 불러오기를 누른다. `/auth/login`의 login_failure·401, login_success·200을 확인한다.
-4. 목록 불러오기를 누른 뒤 제목 `Docker 점검`, 내용 `로그인 실패와 성공을 확인했다`로 메모를 등록한다.
-5. 새로고침 후 현재 로그인 확인 → 기록 불러오기 → 목록 불러오기를 누른다. 같은 메모와 기록을 확인한다.
-6. 아래 종료·재실행을 수행한 뒤 두 서비스에서 다시 로그인하고 기존 기록과 메모를 확인한다.
-
-현재 로그인 확인은 기존 화면의 명시적 세션 조회 버튼이다. 새로고침 직후에는 이를 눌러 화면 상태를 복원한다.
-기존 기록 전송은 실패한 이벤트를 재전송하지 않는다. 감시 API가 준비된 후 새로운 실패·성공 로그인을 수행한다.
-
-## 종료와 데이터 보존 재실행
-
-```powershell
-docker compose -f compose-general.yaml down
-docker compose -f compose-monitor.yaml down
-docker compose -f compose-monitor.yaml up -d --wait
-(Invoke-WebRequest http://localhost:8082/api/auth/me).StatusCode
-# 200 확인 후 실행
-docker compose -f compose-general.yaml up -d --wait
-```
-
-두 프로젝트를 각각 독립적으로 종료할 수 있다. `down`은 컨테이너와 프로젝트 망을 제거하지만 named volume과 외부망은 보존한다.
-`down -v` 또는 volume prune을 사용하지 않는다. 초기 SQL은 빈 DB 볼륨의 최초 초기화에만 적용된다.
-기존 볼륨이 있다면 초기 SQL은 자동 재실행되지 않으므로 기존 스키마를 별도로 확인한다.
-새 소스나 Dockerfile 변경은 `up -d --build`로 반영한다. 로컬 개발 서버를 켤 필요가 없다.
-
-## 서비스·네트워크·공개 포트
-
-| 서비스 | 참여 망 | PC 공개 포트 |
+| 앱 | 진입점 | 역할 |
 |---|---|---|
-| general-gateway | general-front-net | 127.0.0.1:8081 → 80 |
-| general-api | general-front-net, general-data-net, m5d1-events | 없음 (내부 5000) |
-| general-db | general-data-net (internal) | 없음 (내부 5432) |
-| monitor-gateway | monitor-front-net | 127.0.0.1:8082 → 80 |
-| monitor-web | monitor-front-net | 없음 (내부 3000) |
-| monitor-api | monitor-front-net, monitor-data-net, m5d1-events | 없음 (내부 5000) |
-| monitor-db | monitor-data-net (internal) | 없음 (내부 5432) |
+| 일반 Flask | general/app.py, Waitress app:app | 로그인·HTML 게시글 CRUD·이벤트 전송 |
+| 감시 Flask | monitor/backend/app.py, Waitress app:app | 감시 로그인·메모 CRUD·이벤트 수신·조회 |
+| 감시 Next | monitor/next-frontend/app/page.js, npm run start | 감시 화면·같은 사이트 API 프록시 |
 
-Compose 프로젝트 이름은 m5d1-general/m5d1-monitor이다. 프로젝트 내부망 실제 이름에는 프로젝트 접두사가 붙는다.
-같은 YAML 별칭 events만 선언하면 프로젝트별 다른 망이 생성된다. 두 Compose에서 `external: true`,
-`name: m5d1-events`를 지정하고 API 서비스의 networks에 참여시켜야 같은 실제 외부망을 공유한다.
-DB_HOST는 general-db/monitor-db, DB_PORT는 5432이다. 일반 MONITOR_URL은 http://monitor-api:5000/api/events이다.
-공유망은 사전 생성하며 다른 Compose 서비스에 depends_on을 걸지 않는다. 각 API는 자기 DB service_healthy를 기다린다.
-monitor-web/gateway의 실행 중 상태는 DB healthy와 다르며 HTTP 응답으로 별도 검증했다.
-
-## 실제 확인 명령과 결과 (2026-10-12, 한국 시간)
-
-```powershell
-docker compose -f compose-general.yaml config --quiet
-docker compose -f compose-monitor.yaml config --quiet
-docker compose -f compose-general.yaml ps
-docker compose -f compose-monitor.yaml ps
-docker network inspect m5d1-events
-docker compose -f compose-general.yaml exec -T general-api getent hosts monitor-api
-docker compose -f compose-general.yaml logs --no-color
-docker compose -f compose-monitor.yaml logs --no-color
+```text
+일반 브라우저 → 일반 Flask → 일반 PostgreSQL
+                         └→ 감시 Flask /api/events → 감시 PostgreSQL
+감시 브라우저 /api/... → Next Route Handler → 감시 Flask → 감시 PostgreSQL
 ```
 
-두 config 종료코드 0. 7개 서비스 Up, DB 두 개 healthy. 공유망에는 두 API만 참여했다.
-DNS 조회 출력: `172.21.0.2 monitor-api` (IP는 재실행 환경에 따라 달라진다).
-DNS 조회는 이름 해석만 증명한다. 실제 이벤트 수신 201, 로그인 401/200, 감시 조회 200을 API/gateway 로그와 화면으로 별도 확인했다.
-두 화면과 `/api/auth/me` 모두 HTTP 200이었다. 컨테이너 내부 SQL로 general_db/sample 및 monitor_db/sample 연결을 확인했다.
-Next.js 빌드 로그에는 optimized production build 성공과 세 경로가 기록되며 실행 로그는 `next start`이다.
-Flask 두 앱의 로그에서 0.0.0.0:5000을 확인했다.
+일반 MONITOR_URL은 감시 Flask 주소 + `/api/events`, Next MONITOR_API_URL은 감시 Flask 기준 주소만 설정한다. DB 비밀번호·SECRET_KEY·EVENT_TOKEN은 서버에서만 읽으며 브라우저 코드나 NEXT_PUBLIC_*에 넣지 않는다.
 
-재생성 전후: 이벤트 ID 7 login_failure/401, ID 8 login_success/200 및 메모 ID 1의 제목·내용 동일.
-API 컨테이너 ID는 변경됐고 DB named volume은 동일하게 유지됐다. 새 계정도 유지되어 재로그인이 성공했다.
-초기 생성·계정 준비 결과는 operator/student 계정을 만들었습니다였으며, 기존 계정 덮어쓰기는 수행하지 않았다.
+로컬 기존 Compose에서는 Nginx Gateway가 `/api`를 감시 Flask로 직접 전달한다. 기존 Gateway·네트워크·볼륨은 유지했다. Render는 앱별 Dockerfile로 배포하고 Next Route Handler가 API를 전달한다.
 
-증거 파일은 [검증 보고서](verification/REPORT.md)에서 연결한다.
-`verification/monitor-build.txt`, `general-build.txt`는 실제 빌드·기동 출력이다.
-`infrastructure.txt`, `final-checks.txt`는 설정·상태·망·DNS·DB 연결·HTTP 검사 결과다.
-`logs-before.txt`, `logs-after.txt`는 각 7개 서비스의 실제 로그다.
-`recreate.txt`는 DB 조회 전후·컨테이너 ID·down/up·볼륨 보존 결과다.
-`monitor-before.png`, `monitor-after.png`, `general-success.png`는 직접 확인한 화면이다.
-ui.txt 파일은 해당 화면의 접근성 텍스트 기록이다. 세션 쿠키나 CSRF 값은 증거에 저장하지 않았다.
+## 직접 변경한 파일
 
-## 변경 목록과 이유
-
-| 파일 | 변경 이유 |
+| 파일 | 목적 |
 |---|---|
-| compose-general.yaml, compose-monitor.yaml | DB 시작틀을 3/4개 서비스로 완성, 내부망·외부망·DB 준비 대기·gateway 포트 구성 |
-| general/app.py, monitor/backend/app.py | 제공된 설정으로 컨테이너 외부 요청을 받는 0.0.0.0:5000 실행 |
-| general/request_logging.py | 기존 전송 로직을 유지하고 MONITOR_URL 환경변수 지원 |
-| general/Dockerfile, monitor/backend/Dockerfile | 제공된 Python 이미지·requirements 기반 실행 재사용 |
-| monitor/next-frontend/Dockerfile | npm ci, npm run build, production next start 재사용 |
-| 세 빌드 폴더의 .dockerignore | 로컬 가상환경·캐시·node_modules·.next·.env 제외 |
-| general/sql/docker-init.sql, monitor/backend/sql/docker-init.sql | 제공 SQL의 테이블과 실제 repository 쿼리 호환 확인, 빈 볼륨 초기화 |
-| gateways/general.conf, gateways/monitor.conf | 일반 Flask 및 감시 API/Next.js로 내부 이름 프록시, 이벤트 POST는 내부 API로 수신 |
-| monitor/next-frontend/next.config.mjs | 컨테이너의 localhost:5200 개발 rewrite 제거, gateway가 /api 처리 |
-| .gitignore | .next·로그·제출 ZIP 생성물 제외 |
-| README.md, docs/README-start.md, verification/* | 원본 문서 보존, 재현 절차와 실제 검증 증거·20개 판정 기록 |
+| 두 Flask app.py | Sentry 초기화·개발 PORT. 일반 health 및 수정된 Sentry 테스트 |
+| 두 Flask Dockerfile·requirements.txt | 기존 패키지 버전 유지, Waitress·Sentry 추가 및 0.0.0.0:$PORT 실행 |
+| 두 Flask db.py·.env.example | DB_*·SSL·앱별 Supabase/세션/Sentry 예시 |
+| 두 auth_helpers.py | Secure 쿠키 환경변수 처리 |
+| 두 create_user.py | 비밀번호 숨김 입력·해시 저장·기존 계정 보존 |
+| 두 observability.py | 환경·버전·서비스 구분·민감정보 제외 |
+| 두 sql/deploy.sql | repository 쿼리와 일치하는 비파괴 스키마 준비 |
+| general/request_logging.py | EVENT_TOKEN 전송·health 기록 제외·실패 시 기존 응답 유지 |
+| monitor/backend/routes/events.py | 토큰 검증 후 기존 이벤트 저장·조회 |
+| Next app/api/[...path]/route.js | 쿠키·CSRF·Set-Cookie·상태·본문 전달 및 경로 제한 |
+| Next Dockerfile·.env.example·.gitignore | PORT 기본값·서버 API 주소·예시 추적 허용 |
+| 루트 .env.example·.gitignore | Compose 공통 토큰 안내·비밀 파일 제외 |
+| 두 Compose | 기존 구조 보존, EVENT_TOKEN·SSL·쿠키 변수만 추가 |
+| tests/* | 격리 DB 통합·Sentry·영속성·제출 검사 |
+| README·deployment-plan·docs/README-day1·docs/day2-verification | 원문 보존·변경·검증·배포 절차 |
+| day2-materials/project-support/starter/* | 내려받은 참고 자료 |
 
-게시글·로그인·메모·이벤트의 route/repository 및 UI는 변경하지 않았다. 패키지 목록·Next.js 잠금 파일은 기존 소스를 사용한다.
-기존 npm ci는 high 취약점 5개를 보고했다. 강제 버전 업데이트는 이번 컨테이너화 범위에서 하지 않았으며 보안 점검 통과를 주장하지 않는다.
-공유망 분리/복구, restart/rebuild 비교, 다른 DB DNS 격리 실험, PR 병합은 선택 심화이며 수행하지 않았다.
+게시글·메모 CRUD Route/Repository와 화면, 로그인 Route, 이벤트 분류 함수, Next package.json·잠금 파일, 두 Gateway·기존 React 폴더·기존 .dockerignore는 유지했다.
 
-## 제출 구성
+## 미션별 상태
 
-앱 소스 general/, monitor/ (기존 React도 보존), Compose 2개, Dockerfile·.dockerignore,
-requirements.txt·package.json·package-lock.json, SQL, gateways/, README, docs/, verification/를 포함한다.
-Git 추적 파일의 ZIP을 생성해 node_modules·.next·가상환경·캐시·DB 데이터·실제 .env가 포함되지 않게 한다.
-GitHub 제출은 본인 저장소와 push 확인 후 별도로 수행한다. 현재는 로컬 커밋과 ZIP 제출본이다.
+| 미션 | 코드·로컬 결과 | 외부 서비스 |
+|---|---|---|
+| 1 배포 | 세 Docker 빌드, Waitress·개발 실행, health, Windows Next ci/build/start 성공 | Render 미배포 |
+| 2 DB | SSL·SQL 구현, 격리 PostgreSQL CRUD·SQL 재실행 보존 성공 | 실제 Supabase 미검증 |
+| 3 API | 로그인 성공/실패·이벤트·프록시 쿠키/CSRF·CRUD 성공 | Render HTTPS 미검증 |
+| 4 Sentry | 지원 오류500→수정 JSON200, 로그인401·비활성404, 실제 SDK 메모리 수집 및 민감정보 제외 성공 | 원격 Sentry 수신 미검증 |
+
+통합 37개 검사가 통과했고 앱 재생성 후 게시글·메모를 다시 읽었다. Windows 최초 npm 설치와 HTTP 확인은 샌드박스 DNS/네트워크 제한으로 실패했으며 정상 네트워크에서 재실행해 성공했다. npm 감사는 기존 개발 의존성 high 5개, production 의존성 0개였다. 강제 패키지 변경은 하지 않았다. 상세 범위는 검증 문서에 기록했다.
+
+## 기존 Compose 실행
+
+루트 .env에 직접 생성한 EVENT_TOKEN(32자 이상)을 설정한다. CHANGE_ME 예시값은 거부된다. 기존 .env가 있으면 보존하고 필요한 값을 직접 추가한다.
+
+```powershell
+cd 'C:\Users\User\Documents\ChatGPT\수업\mini-watch-day2'
+if (-not (Test-Path .env)) {
+    $eventValue = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+    "EVENT_TOKEN=$eventValue" | Set-Content .env -Encoding utf8
+}
+docker network inspect m5d1-events
+# 공유망이 없을 때만: docker network create m5d1-events
+docker compose -f compose-monitor.yaml up -d --build --wait
+docker compose -f compose-general.yaml up -d --build --wait
+```
+
+일반 localhost:8081, 감시 localhost:8082. 두 Compose는 이번에 구성 검사만 했으며 실제 기동을 다시 검증하지 않았다. 로컬 DB 계정은 각 API 컨테이너에서 대화형 `python create_user.py`로 준비한다. 기존 공개 기본 비밀번호 자동 생성 대신 직접 입력하도록 변경했다. Compose의 기존 공개 수업용 DB 비밀번호·세션 키는 Render에서 재사용하지 않는다.
+
+DB 데이터를 지우는 down -v·volume prune·초기화 SQL은 사용하지 않는다. health 200은 DB 로그인·CRUD 성공을 보장하지 않는다.
+
+## 사용자 검토와 push
+
+현재 origin은 강사 원본 `https://github.com/zeroskill2400/mini-watch.git`이다. 연결 계정 jwonnlee00-lab의 원본 push 권한은 false로 확인했다. push는 하지 않았다. 본인 저장소/fork 주소를 확인한 후 사용자가 직접 실행한다.
+
+```powershell
+git status --short --branch
+git log -3 --oneline
+git diff 96c6e6e HEAD --stat
+git remote -v
+# git remote set-url origin https://github.com/<본인계정>/<저장소>.git
+# git push -u origin day2-deploy
+```
+
+제출·Render 브랜치가 day2-deploy인지 확인한다. 코드 수정 → 커밋 → 사용자 push → Render 배포 커밋 대조 → 같은 기능 재검증 순서로 진행한다.
