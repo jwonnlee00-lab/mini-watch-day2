@@ -1,0 +1,60 @@
+name: m5d1-monitor
+services:
+  monitor-db:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: monitor_db
+      POSTGRES_USER: sample
+      POSTGRES_PASSWORD: sample-only-pass
+    volumes:
+    - monitor-data:/var/lib/postgresql/data
+    - ./monitor/backend/sql/docker-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks:
+    - monitor-data-net
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U sample -d monitor_db
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  monitor-api:
+    build: ./monitor/backend
+    environment:
+      DB_HOST: monitor-db
+      DB_PORT: '5432'
+      DB_NAME: monitor_db
+      DB_USER: sample
+      DB_PASSWORD: sample-only-pass
+      EVENT_TOKEN: local-sample-event-token-not-for-public-deployment
+      SECRET_KEY: sample-monitor-session-key-not-for-production
+    depends_on:
+      monitor-db:
+        condition: service_healthy
+    networks:
+    - monitor-front-net
+    - monitor-data-net
+    - events-net
+  monitor-web:
+    build: ./monitor/next-frontend
+    networks:
+    - monitor-front-net
+  monitor-gateway:
+    image: nginx:1.28-alpine
+    ports:
+    - 127.0.0.1:8082:80
+    volumes:
+    - ./gateways/monitor.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+    - monitor-front-net
+    depends_on:
+    - monitor-api
+    - monitor-web
+volumes:
+  monitor-data: {}
+networks:
+  monitor-front-net: {}
+  monitor-data-net: {}
+  events-net:
+    external: true
+    name: m5d1-events

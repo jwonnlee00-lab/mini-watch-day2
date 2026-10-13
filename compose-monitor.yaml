@@ -23,6 +23,9 @@ services:
       DB_NAME: monitor_db
       DB_USER: sample
       DB_PASSWORD: sample-only-pass
+      EVENT_TOKEN: ${EVENT_TOKEN:?Set EVENT_TOKEN in the root .env}
+      DB_SSLMODE: prefer
+      SESSION_COOKIE_SECURE: 'false'
       SECRET_KEY: classroom-monitor-session-key-only-2026
     depends_on:
       monitor-db:

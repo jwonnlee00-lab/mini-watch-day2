@@ -1,0 +1,95 @@
+name: mini-watch-day2-check
+services:
+  general-db:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: general_test
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: ${TEST_DB_PASSWORD:?Use the ignored test env file}
+    volumes:
+      - general-test-data:/var/lib/postgresql/data
+      - ../general/sql/deploy.sql:/docker-entrypoint-initdb.d/01-deploy.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U test_user -d general_test]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+  monitor-db:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: monitor_test
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: ${TEST_DB_PASSWORD:?Use the ignored test env file}
+    volumes:
+      - monitor-test-data:/var/lib/postgresql/data
+      - ../monitor/backend/sql/deploy.sql:/docker-entrypoint-initdb.d/01-deploy.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U test_user -d monitor_test]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+  monitor-api:
+    image: mini-watch-day2-monitor:local
+    environment:
+      PORT: '5102'
+      DB_HOST: monitor-db
+      DB_PORT: '5432'
+      DB_NAME: monitor_test
+      DB_USER: test_user
+      DB_PASSWORD: ${TEST_DB_PASSWORD}
+      DB_SSLMODE: disable
+      SECRET_KEY: ${MONITOR_SECRET}
+      EVENT_TOKEN: ${EVENT_TOKEN}
+      SESSION_COOKIE_SECURE: 'false'
+      SENTRY_DSN: ''
+    ports: ['127.0.0.1:5802:5102']
+    depends_on:
+      monitor-db:
+        condition: service_healthy
+  general-api:
+    image: mini-watch-day2-general:local
+    environment:
+      PORT: '5101'
+      DB_HOST: general-db
+      DB_PORT: '5432'
+      DB_NAME: general_test
+      DB_USER: test_user
+      DB_PASSWORD: ${TEST_DB_PASSWORD}
+      DB_SSLMODE: disable
+      SECRET_KEY: ${GENERAL_SECRET}
+      EVENT_TOKEN: ${EVENT_TOKEN}
+      MONITOR_URL: http://monitor-api:5102/api/events
+      SESSION_COOKIE_SECURE: 'false'
+      ENABLE_SENTRY_TEST: ${TEST_ENABLE_SENTRY_TEST:-false}
+      SENTRY_DSN: ''
+    ports: ['127.0.0.1:5801:5101']
+    depends_on:
+      general-db:
+        condition: service_healthy
+      monitor-api:
+        condition: service_started
+  monitor-web:
+    image: mini-watch-day2-next:local
+    environment:
+      PORT: '3100'
+      MONITOR_API_URL: http://monitor-api:5102
+    ports: ['127.0.0.1:3802:3100']
+    depends_on: [monitor-api]
+  checks:
+    image: mini-watch-day2-general:local
+    profiles: [checks]
+    working_dir: /tests
+    volumes:
+      - .:/tests:ro
+      - ../general/sql/deploy.sql:/sql/general.sql:ro
+      - ../monitor/backend/sql/deploy.sql:/sql/monitor.sql:ro
+      - ../day2-materials/project-support/starter/general/app.py:/support/general-app.py:ro
+      - ../monitor/backend/observability.py:/monitor-observability.py:ro
+    environment:
+      TEST_DB_PASSWORD: ${TEST_DB_PASSWORD}
+      TEST_ACCOUNT_PASSWORD: ${TEST_ACCOUNT_PASSWORD}
+      EVENT_TOKEN: ${EVENT_TOKEN}
+    entrypoint: [python, integration.py]
+volumes:
+  general-test-data: {}
+  monitor-test-data: {}

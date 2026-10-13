@@ -15,7 +15,7 @@ def configure_session(app, cookie_name):
         SESSION_COOKIE_NAME=cookie_name,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_SECURE=False,  # 로컬 HTTP 실습. HTTPS 배포에서는 True.
+        SESSION_COOKIE_SECURE=os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true',
     )
 
 

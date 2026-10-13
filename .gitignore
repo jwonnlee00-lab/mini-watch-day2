@@ -10,3 +10,7 @@ dist/
 .next/
 *.log
 submission-*.zip
+
+.env.*
+!.env.example
+.local-test/
